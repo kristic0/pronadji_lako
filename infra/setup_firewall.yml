@@ -1,0 +1,35 @@
+---
+- name: Install and Configure Firewalld
+  hosts: all
+  become: true
+  tasks:
+    - name: Install firewalld
+      package:
+        name: firewalld
+        state: present
+
+    - name: Enable and start firewalld
+      systemd:
+        name: firewalld
+        enabled: yes
+        state: started
+
+    - name: Configure firewalld rules
+      firewalld:
+        zone: public
+        service: "{{ item }}"
+        permanent: yes
+        state: enabled
+      loop:
+        - ssh
+        - http
+        - https
+
+    - name: Reload firewalld to apply changes
+      command: firewall-cmd --reload
+
+    - name: Ensure firewalld is running and enabled
+      systemd:
+        name: firewalld
+        enabled: yes
+        state: started

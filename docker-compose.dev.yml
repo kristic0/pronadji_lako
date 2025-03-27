@@ -1,0 +1,78 @@
+services:
+  mysql_db:
+    container_name: mysql_db
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - pronadji_lako_network
+
+  backend:
+    container_name: backend
+    depends_on:
+      - mysql_db
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.compose
+    env_file:
+      - ./backend/.env.local.compose
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - pronadji_lako_network
+
+  react_app:
+    container_name: frontend
+    build:
+      context: ./react_app
+      dockerfile: Dockerfile.compose
+    ports:
+      - "3500:3000"
+    volumes:
+      - ./react_app:/app
+      - /app/node_modules
+    stdin_open: true
+    networks:
+      - pronadji_lako_network
+
+  nominatim:
+    container_name: nominatim_serbia_15
+    image: kristic/nominatim_serbia_15:latest
+    ports:
+      - "8080:8080"
+    networks:
+      - pronadji_lako_network
+    restart: always
+
+  minio:
+    container_name: pl_minio
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=pl_admin
+      - MINIO_ROOT_PASSWORD=wJalrXUtnFEMI
+    volumes:
+      - minio:/data
+      - minio_config:/root/.minio
+    networks:
+      - pronadji_lako_network
+    command: server /data --console-address ":9001"
+
+volumes:
+  mysql_data:
+  minio:
+  minio_config:
+
+networks:
+  pronadji_lako_network:
+    driver: bridge

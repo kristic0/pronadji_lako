@@ -1,0 +1,107 @@
+stages:
+  - build
+  - check
+  - deploy
+
+variables:
+  HUB_USER: "kristic"
+  DATABASE_IMG: "pronadji_lako_mysql"
+  BACKEND_IMG: "pronadji_dadilju_backend_image"
+  REACT_IMG: "pronadji_dadilju_react_image"
+  NGINX_IMG: "pronadji_lako_nginx_image"
+  DATABASE_TAG: "1"
+  BACKEND_TAG: "1"
+  REACT_TAG: "1.01"
+  NGINX_TAG: "1"
+
+cache:
+  paths:
+    - backend/node_modules/
+    - react_app/node_modules/
+
+nginx_build:
+  stage: build
+  only:
+    - master
+  image: docker:20.10.16
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  before_script:
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASS
+  script:
+    - cd infra
+    - docker build -f Dockerfile -t $HUB_USER/$NGINX_IMG:$NGINX_TAG .
+    - docker push $HUB_USER/$NGINX_IMG:$NGINX_TAG
+
+db_build:
+  stage: build
+  only:
+    - master
+  image: docker:20.10.16
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  before_script:
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASS
+  script:
+    - cd database
+    - docker build -f Dockerfile -t $HUB_USER/$DATABASE_IMG:$DATABASE_TAG .
+    - docker push $HUB_USER/$DATABASE_IMG:$DATABASE_TAG
+
+backend_build:
+  stage: build
+  only:
+    - master
+  image: docker:20.10.16
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  before_script:
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASS
+  script:
+    - cd backend
+    - docker build -f Dockerfile.prod -t $HUB_USER/$BACKEND_IMG:$BACKEND_TAG .
+    - docker push $HUB_USER/$BACKEND_IMG:$BACKEND_TAG
+
+react_build:
+  stage: build
+  only:
+    - master
+  image: docker:20.10.16
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  before_script:
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASS
+  script:
+    - cd react_app
+    - docker build -f Dockerfile.prod -t $HUB_USER/$REACT_IMG:$REACT_TAG .
+    - docker push $HUB_USER/$REACT_IMG:$REACT_TAG
+
+check_server:
+  stage: check
+  script:
+    - if ping -c 3 185.119.90.210; then echo "Server is online"; else echo "Server is offline"; exit 1; fi
+  allow_failure: true
+  only:
+    - master
+
+deploy:
+  image: ubuntu:latest
+  stage: deploy
+  only:
+    - master
+  before_script:
+    - apt-get -yq update
+    - apt-get -yqq install ssh
+    - "which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )"
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - ssh-keyscan -H $SSH_HOST > ~/.ssh/known_hosts
+    - ls -alh
+    - ls -alh infra/
+  script:
+    - scp infra/deploy.sh "$SSH_USER@$SSH_HOST:/tmp/deploy.sh"
+    - scp infra/renew_certs.sh "$SSH_USER@$SSH_HOST:/tmp/renew_certs.sh"
+    - ssh "$SSH_USER@$SSH_HOST" "export HUB_USER='$HUB_USER' DATABASE_IMG='$DATABASE_IMG' DATABASE_TAG='$DATABASE_TAG' BACKEND_IMG='$BACKEND_IMG' BACKEND_TAG='$BACKEND_TAG' REACT_IMG='$REACT_IMG' REACT_TAG='$REACT_TAG' REGISTRY_USER='$REGISTRY_USER' REGISTRY_PASS='$REGISTRY_PASS'; bash /tmp/deploy.sh"
+  after_script:
+    - rm -rf ~/.ssh
+  needs:
+    - check_server

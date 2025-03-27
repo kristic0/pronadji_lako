@@ -1,0 +1,26 @@
+- name: Copy file and set cron job
+  hosts: pl_servers
+  become: yes
+  tasks:
+    - name: Create remote directory if not exists
+      ansible.builtin.file:
+        path: /root/jobs
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy the file to the server
+      ansible.builtin.copy:
+        src: renew_certs.sh
+        dest: /root/jobs
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure cron job is present
+      ansible.builtin.cron:
+        name: "Run script daily at 20:00"
+        minute: "0"
+        hour: "20"
+        job: "bash /root/jobs/renew_certs.sh"
